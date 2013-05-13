@@ -21,11 +21,11 @@ int main(int argc, array(string) argv)
 
   string file = combine_path(dirname(__FILE__), "public.yaml");
 
-  /*
+
   mapping data = p->get_mapping (file);
   werror ("%O\n", data);
-  */
 
+/*
   p->set_input_file (combine_path(dirname(__FILE__), "public.yaml"));
 
   int type, i;
@@ -34,10 +34,10 @@ int main(int argc, array(string) argv)
     //werror ("TYPE0: %O\n", type);
     mixed x = p->get_event ();
 
-    if (type == MAPPING_START_EVENT)
+    if (type == ALIAS_EVENT)
       werror ("%O\n", x);
   }
-
+*/
   //mapping (string:int) version = get_version ();
   //write ("%O\n", version);
 }

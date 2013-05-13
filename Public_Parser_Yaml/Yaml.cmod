@@ -50,7 +50,7 @@ DECLARATIONS
 /*! @module Yaml
  */
 
-#define YAML_DEBUG
+//#define YAML_DEBUG
 
 #ifdef YAML_DEBUG
 # define YAML_TRACE(X...) printf ("# " X)
@@ -59,8 +59,8 @@ DECLARATIONS
 #endif
 
 #define P_TEXT(X) do {           \
-	if ((X) == NULL) push_int (0); \
-	else push_text ((X));          \
+  if ((X) == NULL) push_int (0); \
+  else push_text ((X));          \
 } while (0)
 
 /*! @decl string get_version_string()
@@ -69,8 +69,8 @@ DECLARATIONS
  */
 PIKEFUN string get_version_string ()
 {
-	push_text (yaml_get_version_string ());
-	return;
+  push_text (yaml_get_version_string ());
+  return;
 }
 
 /*! @decl mapping(string:int) get_version()
@@ -86,62 +86,62 @@ PIKEFUN string get_version_string ()
  */
 PIKEFUN mapping(string:int) get_version ()
 {
-	int a, b, c;
-	yaml_get_version (&a, &b, &c);
+  int a, b, c;
+  yaml_get_version (&a, &b, &c);
 
 #define PUSH_MAP(K,V) { push_text ((K)); \
                         push_int ((V)); }
 
-	PUSH_MAP ("major", a);
-	PUSH_MAP ("minor", b);
-	PUSH_MAP ("patch", c);
+  PUSH_MAP ("major", a);
+  PUSH_MAP ("minor", b);
+  PUSH_MAP ("patch", c);
 
 #undef PUSH_MAP
 
-	f_aggregate_mapping (6);
+  f_aggregate_mapping (6);
 
-	return;
+  return;
 }
 
 PIKECLASS _Parser
 {
-	CVAR yaml_parser_t parser;
-	CVAR yaml_event_t event;
-	CVAR yaml_token_t token;
-	CVAR FILE *fh;
-	CVAR int has_input;
+  CVAR yaml_parser_t parser;
+  CVAR yaml_event_t event;
+  CVAR yaml_token_t token;
+  CVAR FILE *fh;
+  CVAR int has_input;
 
   /*! @decl void create()
    *!
    *! Creates a YAML parser object
    */
-	PIKEFUN void create ()
-		flags ID_PROTECTED;
-	{
-		YAML_TRACE ("Create parser object\n");
-	}
+  PIKEFUN void create ()
+    flags ID_PROTECTED;
+  {
+    YAML_TRACE ("Create parser object\n");
+  }
 
   /*! @decl void set_input_file (string file)
    *!
    *! @param file
    *!  The YAML file to parse/scan
    */
-	PIKEFUN void set_input_file (string file)
-	{
-		//yaml_parser_t _parser;
-		THIS->fh = fopen (file->str, "r");
+  PIKEFUN void set_input_file (string file)
+  {
+    //yaml_parser_t _parser;
+    THIS->fh = fopen (file->str, "r");
 
-		if (THIS->fh == NULL) {
-			Pike_error ("Unable to open file \"%s\"\n", file->str);
-			return;
-		}
+    if (THIS->fh == NULL) {
+      Pike_error ("Unable to open file \"%s\"\n", file->str);
+      return;
+    }
 
     yaml_parser_set_input_file (&THIS->parser, THIS->fh);
 
     THIS->has_input = 1;
 
-		pop_n_elems (args);
-	}
+    pop_n_elems (args);
+  }
 
   /*! @decl int parse()
    *!
@@ -150,14 +150,14 @@ PIKECLASS _Parser
    *! @returns
    *!  Returns the event type
    */
-	PIKEFUN int parse ()
-	{
-		yaml_event_t _event;
+  PIKEFUN int parse ()
+  {
+    yaml_event_t _event;
 
-		if (!THIS->has_input)
-			Pike_error ("No input given to object. Set via \"set_input_file()\"\n");
+    if (!THIS->has_input)
+      Pike_error ("No input given to object. Set via \"set_input_file()\"\n");
 
-		if (!yaml_parser_parse (&THIS->parser, &_event)) {
+    if (!yaml_parser_parse (&THIS->parser, &_event)) {
       Pike_error ("Parser error: %d\n", THIS->parser.error);
       return;
     }
@@ -165,45 +165,45 @@ PIKECLASS _Parser
     THIS->event = _event;
 
     RETURN (_event.type);
-	}
+  }
 
-	PIKEFUN int scan ()
-	{
-		yaml_token_t _token;
+  PIKEFUN int scan ()
+  {
+    yaml_token_t _token;
 
-		if (!THIS->has_input)
-			Pike_error ("No input given to object. Set via \"set_input_file()\"\n");
+    if (!THIS->has_input)
+      Pike_error ("No input given to object. Set via \"set_input_file()\"\n");
 
-		if (!yaml_parser_scan (&THIS->parser, &_token)) {
-			Pike_error ("Scanner error: %d\n", THIS->parser.error);
+    if (!yaml_parser_scan (&THIS->parser, &_token)) {
+      Pike_error ("Scanner error: %d\n", THIS->parser.error);
       return;
-		}
+    }
 
-		THIS->token = _token;
+    THIS->token = _token;
 
-		RETURN (_token.type);
-	}
+    RETURN (_token.type);
+  }
 
 #define DATA THIS->event.data
 
-	PIKEFUN mapping(string:int|mapping(string:int|string)|string) get_event ()
-	{
-		push_constant_text ("type");   push_int (THIS->event.type);
+  PIKEFUN mapping(string:int|mapping(string:int|string)|string) get_event ()
+  {
+    push_constant_text ("type");   push_int (THIS->event.type);
 
-		push_constant_text ("end_mark");
-		push_constant_text ("index");  push_int (THIS->event.end_mark.index);
-		push_constant_text ("line");   push_int (THIS->event.end_mark.line);
-		push_constant_text ("column"); push_int (THIS->event.end_mark.column);
-		f_aggregate_mapping (6);
+    push_constant_text ("end_mark");
+    push_constant_text ("index");  push_int (THIS->event.end_mark.index);
+    push_constant_text ("line");   push_int (THIS->event.end_mark.line);
+    push_constant_text ("column"); push_int (THIS->event.end_mark.column);
+    f_aggregate_mapping (6);
 
-		push_constant_text ("start_mark");
-		push_constant_text ("index");  push_int (THIS->event.start_mark.index);
-		push_constant_text ("line");   push_int (THIS->event.start_mark.line);
-		push_constant_text ("column"); push_int (THIS->event.start_mark.column);
-		f_aggregate_mapping (6);
+    push_constant_text ("start_mark");
+    push_constant_text ("index");  push_int (THIS->event.start_mark.index);
+    push_constant_text ("line");   push_int (THIS->event.start_mark.line);
+    push_constant_text ("column"); push_int (THIS->event.start_mark.column);
+    f_aggregate_mapping (6);
 
-		switch (THIS->event.type)
-		{
+    switch (THIS->event.type)
+    {
       case  YAML_STREAM_START_EVENT:
         push_constant_text ("stream_start");
         push_constant_text ("encoding");
@@ -234,12 +234,12 @@ PIKECLASS _Parser
 
         break;
 
-			case YAML_SCALAR_EVENT:
-				push_constant_text ("scalar");
-				push_constant_text ("tag"); P_TEXT ((const char *) DATA.scalar.tag);
-				push_constant_text ("anchor");
+      case YAML_SCALAR_EVENT:
+        push_constant_text ("scalar");
+        push_constant_text ("tag"); P_TEXT ((const char *) DATA.scalar.tag);
+        push_constant_text ("anchor");
           P_TEXT ((const char *) DATA.scalar.anchor);
-				push_constant_text ("value"); P_TEXT ((const char *) DATA.scalar.value);
+        push_constant_text ("value"); P_TEXT ((const char *) DATA.scalar.value);
         push_constant_text ("length"); push_int (DATA.scalar.length);
         push_constant_text ("plain_implicit");
           push_int (DATA.scalar.plain_implicit);
@@ -248,25 +248,25 @@ PIKECLASS _Parser
         push_constant_text ("style");
           push_int (DATA.scalar.style);
 
-				f_aggregate_mapping (14);
-				f_aggregate_mapping (8);
+        f_aggregate_mapping (14);
+        f_aggregate_mapping (8);
 
-				break;
+        break;
 
-			case YAML_SEQUENCE_START_EVENT:
-				push_constant_text ("sequence_start");
-				push_constant_text ("anchor");
-					P_TEXT ((const char *) DATA.sequence_start.anchor);
-				push_constant_text ("tag");
+      case YAML_SEQUENCE_START_EVENT:
+        push_constant_text ("sequence_start");
+        push_constant_text ("anchor");
+          P_TEXT ((const char *) DATA.sequence_start.anchor);
+        push_constant_text ("tag");
           P_TEXT ((const char *) DATA.sequence_start.tag);
-				push_constant_text ("implicit");
+        push_constant_text ("implicit");
           push_int (DATA.sequence_start.implicit);
-				push_constant_text ("style"); push_int (DATA.sequence_start.style);
+        push_constant_text ("style"); push_int (DATA.sequence_start.style);
 
-				f_aggregate_mapping (8);
-				f_aggregate_mapping (8);
+        f_aggregate_mapping (8);
+        f_aggregate_mapping (8);
 
-				break;
+        break;
 
       case YAML_MAPPING_START_EVENT:
         push_constant_text ("mapping_start");
@@ -292,64 +292,73 @@ PIKECLASS _Parser
 
         break;
 
-			default:
-				f_aggregate_mapping (6);
-		}
+      case YAML_ALIAS_EVENT:
+        push_constant_text ("alias");
+        push_constant_text ("anchor");
+          P_TEXT ((const char *) DATA.alias.anchor);
 
-		return;
-	}
+        f_aggregate_mapping (2);
+        f_aggregate_mapping (8);
+        break;
 
-	PIKEFUN int|string get_token ()
-	{
-		switch (THIS->token.type)
-		{
-			case YAML_SCALAR_TOKEN:
-				push_text ((const char*) THIS->token.data.scalar.value);
-				break;
+      default:
+        f_aggregate_mapping (6);
+    }
 
-			default:
-				push_int (THIS->token.type);
-				break;
-		}
-	}
+    return;
+  }
 
-	INIT
-	{
-		YAML_TRACE ("Init class\n");
-		THIS->has_input = 0;
-		THIS->fh = NULL;
+  PIKEFUN int|string get_token ()
+  {
+    switch (THIS->token.type)
+    {
+      case YAML_SCALAR_TOKEN:
+        push_text ((const char*) THIS->token.data.scalar.value);
+        break;
+
+      default:
+        push_int (THIS->token.type);
+        break;
+    }
+  }
+
+  INIT
+  {
+    YAML_TRACE ("Init class\n");
+    THIS->has_input = 0;
+    THIS->fh = NULL;
 
     memset (&THIS->parser, 0, sizeof (THIS->parser));
     memset (&THIS->event,  0, sizeof (THIS->event));
     memset (&THIS->token,  0, sizeof (THIS->token));
 
-		if (!yaml_parser_initialize (&THIS->parser)) {
-    	Pike_error ("Error initializing parser!\n");
-    	return;
+    if (!yaml_parser_initialize (&THIS->parser)) {
+      Pike_error ("Error initializing parser!\n");
+      return;
     }
-	}
+  }
 
-	EXIT
-	{
-		yaml_event_delete (&THIS->event);
-		yaml_token_delete (&THIS->token);
+  EXIT
+  {
+    yaml_event_delete (&THIS->event);
+    yaml_token_delete (&THIS->token);
 
-		if (THIS->fh != NULL) {
-			YAML_TRACE ("Closing file\n");
-			fclose (THIS->fh);
-		}
+    if (THIS->fh != NULL) {
+      YAML_TRACE ("Closing file\n");
+      fclose (THIS->fh);
+    }
 
-		YAML_TRACE ("Deleteing parser\n");
-		yaml_parser_delete (&THIS->parser);
+    YAML_TRACE ("Deleteing parser\n");
+    yaml_parser_delete (&THIS->parser);
 
-		YAML_TRACE ("Exit class\n");
-	}
+    YAML_TRACE ("Exit class\n");
+  }
 }
 
 PIKE_MODULE_INIT
 {
-	add_string_constant("__author", PACKAGE_BUGREPORT, 0);
-	add_string_constant("__version", PACKAGE_VERSION, 0);
+  add_string_constant("__author", PACKAGE_BUGREPORT, 0);
+  add_string_constant("__version", PACKAGE_VERSION, 0);
 
   /* yaml_encoding_e */
   add_integer_constant ("ANY_ENCODING", YAML_ANY_ENCODING, 0);
@@ -529,12 +538,12 @@ PIKE_MODULE_INIT
                         YAML_EMIT_BLOCK_MAPPING_VALUE_STATE, 0);
   add_integer_constant ("EMIT_END_STATE", YAML_EMIT_END_STATE, 0);
 
-	INIT
+  INIT
 }
 
 PIKE_MODULE_EXIT
 {
-	EXIT
+  EXIT
 }
 
 /*! @endmodule

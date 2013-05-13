@@ -23,6 +23,7 @@
 inherit Public.Parser@module@;
 
 constant __components = ({});
+//! @endignore
 
 class Parser
 {
@@ -30,7 +31,10 @@ class Parser
 
   private constant STATE_KEY = 0;
 
-/*
+  //! Parse @[file_or_data] into a mapping
+  //!
+  //! @param file_or_data
+  //!  Either a path to a file or the YAML tree as a string
   mapping get_mapping (string file_or_data)
   {
     if (Stdio.exist (file_or_data))
@@ -83,14 +87,12 @@ class Parser
           break;
 
         case SCALAR_EVENT:
-          string value = get_event ();
+          mapping value = get_event ();
 
-          if (data_state == STATE_KEY) {
-            last_key = value;
-          }
-          else {
-            tmp_map[last_key] = value;
-          }
+          if (data_state == STATE_KEY)
+            last_key = value->scalar->value;
+          else
+            tmp_map[last_key] = value->scalar->value;
 
           data_state = !data_state;
 
@@ -100,7 +102,4 @@ class Parser
 
     return out;
   }
-  */
 }
-
-//! @endignore
