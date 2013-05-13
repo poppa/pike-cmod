@@ -1,0 +1,43 @@
+#!/usr/bin/env pike
+
+import Public.Parser.Yaml;
+
+int main(int argc, array(string) argv)
+{
+#if 0
+  write("\nThis is \"%O %s\" by \"%s\"\n\n",
+        Public.Parser.Yaml.module, __version, __author);
+
+  foreach (sort(indices(Public.Parser.Yaml)), string k)
+    write( "  * %s: %O\n", k, Public.Parser.Yaml[k] );
+
+  write ("\nlibyaml version: %s\n", get_version_string ());
+
+  mapping (string:int) version = get_version ();
+  write ("%O\n", version);
+#endif
+
+  Parser p = Parser ();
+
+  string file = combine_path(dirname(__FILE__), "public.yaml");
+
+  /*
+  mapping data = p->get_mapping (file);
+  werror ("%O\n", data);
+  */
+
+  p->set_input_file (combine_path(dirname(__FILE__), "public.yaml"));
+
+  int type, i;
+
+  while (type = p->parse ()) {
+    //werror ("TYPE0: %O\n", type);
+    mixed x = p->get_event ();
+
+    if (type == MAPPING_START_EVENT)
+      werror ("%O\n", x);
+  }
+
+  //mapping (string:int) version = get_version ();
+  //write ("%O\n", version);
+}

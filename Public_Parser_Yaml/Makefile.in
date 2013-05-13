@@ -1,0 +1,15 @@
+@make_variables@
+VPATH=@srcdir@
+OBJS=Yaml.o
+MODDIR=Public.pmod/Parser.pmod/
+MODNAME=Yaml
+AUTODOC_SRC_IN=Yaml.c
+MODULE_NAME=Public.Parser.Yaml
+MODULE_DIRNAME=Public_Parser
+MODULE_PMOD_IN=module.pmod.in
+MODULE_LICENSE=GPL
+MODULE_LDFLAGS=@LDFLAGS@ @LIBS@ @CMOD_LIBS@
+MODULE_CFLAGS=@CMOD_CFLAGS@
+CONFIG_HEADERS=@CONFIG_HEADERS@
+@dynamic_module_makefile@
+@dependencies@

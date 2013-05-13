@@ -1,0 +1,13 @@
+AC_INIT([Public.Parser.Yaml], [0.1], [Pontus Östlund], [Public_Parser_Yaml])
+
+AC_MODULE_INIT()
+AC_CONFIG_HEADERS(yaml_config.h)
+
+CMOD_LIBS="-lyaml"
+CMOD_CFLAGS=""
+#"-g -std=gnu99 -DUSE_WCHAR_SCANF"
+
+AC_SUBST(CMOD_CFLAGS)
+AC_SUBST(CMOD_LIBS)
+AC_CHECK_HEADER([yaml.h])
+AC_OUTPUT(Makefile)

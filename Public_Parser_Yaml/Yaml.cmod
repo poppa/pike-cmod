@@ -1,0 +1,545 @@
+/* Public.Parser.Yaml
+ *
+ * Copyright (C) 2013  Pontus Östlund
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ */
+
+#include <yaml.h>
+
+#include "global.h"
+#include "interpret.h"
+#include "module.h"
+#include "program.h"
+#include "stralloc.h"
+#include "svalue.h"
+#include "object.h"
+#include "mapping.h"
+#include "pike_types.h"
+#include "builtin_functions.h"
+
+#undef PACKAGE_BUGREPORT
+#undef PACKAGE_NAME
+#undef PACKAGE_STRING
+#undef PACKAGE_TARNAME
+#undef PACKAGE_URL
+#undef PACKAGE_VERSION
+
+#include "yaml_config.h"
+
+DECLARATIONS
+
+/*! @module Public
+ */
+
+/*! @module Parser
+ */
+
+/*! @module Yaml
+ */
+
+#define YAML_DEBUG
+
+#ifdef YAML_DEBUG
+# define YAML_TRACE(X...) printf ("# " X)
+#else
+# define YAML_TRACE(X...) 0
+#endif
+
+#define P_TEXT(X) do {           \
+	if ((X) == NULL) push_int (0); \
+	else push_text ((X));          \
+} while (0)
+
+/*! @decl string get_version_string()
+ *!
+ *! Returns the @tt{libyaml@} version as a string
+ */
+PIKEFUN string get_version_string ()
+{
+	push_text (yaml_get_version_string ());
+	return;
+}
+
+/*! @decl mapping(string:int) get_version()
+ *!
+ *! Returns the @tt{libyaml@} version as a mapping
+ *!
+ *! @returns
+ *!  @mapping
+ *!   @member int "major"
+ *!   @member int "minor"
+ *!   @member int "patch"
+ *!  @endmapping
+ */
+PIKEFUN mapping(string:int) get_version ()
+{
+	int a, b, c;
+	yaml_get_version (&a, &b, &c);
+
+#define PUSH_MAP(K,V) { push_text ((K)); \
+                        push_int ((V)); }
+
+	PUSH_MAP ("major", a);
+	PUSH_MAP ("minor", b);
+	PUSH_MAP ("patch", c);
+
+#undef PUSH_MAP
+
+	f_aggregate_mapping (6);
+
+	return;
+}
+
+PIKECLASS _Parser
+{
+	CVAR yaml_parser_t parser;
+	CVAR yaml_event_t event;
+	CVAR yaml_token_t token;
+	CVAR FILE *fh;
+	CVAR int has_input;
+
+  /*! @decl void create()
+   *!
+   *! Creates a YAML parser object
+   */
+	PIKEFUN void create ()
+		flags ID_PROTECTED;
+	{
+		YAML_TRACE ("Create parser object\n");
+	}
+
+  /*! @decl void set_input_file (string file)
+   *!
+   *! @param file
+   *!  The YAML file to parse/scan
+   */
+	PIKEFUN void set_input_file (string file)
+	{
+		//yaml_parser_t _parser;
+		THIS->fh = fopen (file->str, "r");
+
+		if (THIS->fh == NULL) {
+			Pike_error ("Unable to open file \"%s\"\n", file->str);
+			return;
+		}
+
+    yaml_parser_set_input_file (&THIS->parser, THIS->fh);
+
+    THIS->has_input = 1;
+
+		pop_n_elems (args);
+	}
+
+  /*! @decl int parse()
+   *!
+   *! Move parser to next event
+   *!
+   *! @returns
+   *!  Returns the event type
+   */
+	PIKEFUN int parse ()
+	{
+		yaml_event_t _event;
+
+		if (!THIS->has_input)
+			Pike_error ("No input given to object. Set via \"set_input_file()\"\n");
+
+		if (!yaml_parser_parse (&THIS->parser, &_event)) {
+      Pike_error ("Parser error: %d\n", THIS->parser.error);
+      return;
+    }
+
+    THIS->event = _event;
+
+    RETURN (_event.type);
+	}
+
+	PIKEFUN int scan ()
+	{
+		yaml_token_t _token;
+
+		if (!THIS->has_input)
+			Pike_error ("No input given to object. Set via \"set_input_file()\"\n");
+
+		if (!yaml_parser_scan (&THIS->parser, &_token)) {
+			Pike_error ("Scanner error: %d\n", THIS->parser.error);
+      return;
+		}
+
+		THIS->token = _token;
+
+		RETURN (_token.type);
+	}
+
+#define DATA THIS->event.data
+
+	PIKEFUN mapping(string:int|mapping(string:int|string)|string) get_event ()
+	{
+		push_constant_text ("type");   push_int (THIS->event.type);
+
+		push_constant_text ("end_mark");
+		push_constant_text ("index");  push_int (THIS->event.end_mark.index);
+		push_constant_text ("line");   push_int (THIS->event.end_mark.line);
+		push_constant_text ("column"); push_int (THIS->event.end_mark.column);
+		f_aggregate_mapping (6);
+
+		push_constant_text ("start_mark");
+		push_constant_text ("index");  push_int (THIS->event.start_mark.index);
+		push_constant_text ("line");   push_int (THIS->event.start_mark.line);
+		push_constant_text ("column"); push_int (THIS->event.start_mark.column);
+		f_aggregate_mapping (6);
+
+		switch (THIS->event.type)
+		{
+      case  YAML_STREAM_START_EVENT:
+        push_constant_text ("stream_start");
+        push_constant_text ("encoding");
+          push_int (THIS->event.data.stream_start.encoding);
+
+        f_aggregate_mapping (2);
+        f_aggregate_mapping (8);
+        break;
+
+      case YAML_DOCUMENT_START_EVENT:
+        push_constant_text ("document_start");
+
+        // Sub key of document_start
+        push_constant_text ("tag_directives");
+        push_constant_text ("start");
+          P_TEXT ((const char *) DATA.document_start.tag_directives.start);
+        push_constant_text ("end");
+          P_TEXT ((const char *) DATA.document_start.tag_directives.end);
+
+        f_aggregate_mapping (4);
+
+        // Sub item of document_start
+        push_constant_text ("implicit");
+          push_int (DATA.document_start.implicit);
+
+        f_aggregate_mapping (4); // tag_directives and implicit
+        f_aggregate_mapping (8);
+
+        break;
+
+			case YAML_SCALAR_EVENT:
+				push_constant_text ("scalar");
+				push_constant_text ("tag"); P_TEXT ((const char *) DATA.scalar.tag);
+				push_constant_text ("anchor");
+          P_TEXT ((const char *) DATA.scalar.anchor);
+				push_constant_text ("value"); P_TEXT ((const char *) DATA.scalar.value);
+        push_constant_text ("length"); push_int (DATA.scalar.length);
+        push_constant_text ("plain_implicit");
+          push_int (DATA.scalar.plain_implicit);
+        push_constant_text ("quoted_implicit");
+          push_int (DATA.scalar.quoted_implicit);
+        push_constant_text ("style");
+          push_int (DATA.scalar.style);
+
+				f_aggregate_mapping (14);
+				f_aggregate_mapping (8);
+
+				break;
+
+			case YAML_SEQUENCE_START_EVENT:
+				push_constant_text ("sequence_start");
+				push_constant_text ("anchor");
+					P_TEXT ((const char *) DATA.sequence_start.anchor);
+				push_constant_text ("tag");
+          P_TEXT ((const char *) DATA.sequence_start.tag);
+				push_constant_text ("implicit");
+          push_int (DATA.sequence_start.implicit);
+				push_constant_text ("style"); push_int (DATA.sequence_start.style);
+
+				f_aggregate_mapping (8);
+				f_aggregate_mapping (8);
+
+				break;
+
+      case YAML_MAPPING_START_EVENT:
+        push_constant_text ("mapping_start");
+        push_constant_text ("anchor");
+          P_TEXT ((const char *) DATA.sequence_start.anchor);
+        push_constant_text ("tag");
+          P_TEXT ((const char *) DATA.sequence_start.tag);
+        push_constant_text ("implicit");
+          push_int (DATA.sequence_start.implicit);
+        push_constant_text ("style"); push_int (DATA.sequence_start.style);
+
+        f_aggregate_mapping (8);
+        f_aggregate_mapping (8);
+
+        break;
+
+      case YAML_DOCUMENT_END_EVENT:
+        push_constant_text ("document_end");
+        push_constant_text ("implicit"); push_int (DATA.document_end.implicit);
+
+        f_aggregate_mapping (2);
+        f_aggregate_mapping (8);
+
+        break;
+
+			default:
+				f_aggregate_mapping (6);
+		}
+
+		return;
+	}
+
+	PIKEFUN int|string get_token ()
+	{
+		switch (THIS->token.type)
+		{
+			case YAML_SCALAR_TOKEN:
+				push_text ((const char*) THIS->token.data.scalar.value);
+				break;
+
+			default:
+				push_int (THIS->token.type);
+				break;
+		}
+	}
+
+	INIT
+	{
+		YAML_TRACE ("Init class\n");
+		THIS->has_input = 0;
+		THIS->fh = NULL;
+
+    memset (&THIS->parser, 0, sizeof (THIS->parser));
+    memset (&THIS->event,  0, sizeof (THIS->event));
+    memset (&THIS->token,  0, sizeof (THIS->token));
+
+		if (!yaml_parser_initialize (&THIS->parser)) {
+    	Pike_error ("Error initializing parser!\n");
+    	return;
+    }
+	}
+
+	EXIT
+	{
+		yaml_event_delete (&THIS->event);
+		yaml_token_delete (&THIS->token);
+
+		if (THIS->fh != NULL) {
+			YAML_TRACE ("Closing file\n");
+			fclose (THIS->fh);
+		}
+
+		YAML_TRACE ("Deleteing parser\n");
+		yaml_parser_delete (&THIS->parser);
+
+		YAML_TRACE ("Exit class\n");
+	}
+}
+
+PIKE_MODULE_INIT
+{
+	add_string_constant("__author", PACKAGE_BUGREPORT, 0);
+	add_string_constant("__version", PACKAGE_VERSION, 0);
+
+  /* yaml_encoding_e */
+  add_integer_constant ("ANY_ENCODING", YAML_ANY_ENCODING, 0);
+  add_integer_constant ("UTF8_ENCODING", YAML_UTF8_ENCODING, 0);
+  add_integer_constant ("UTF16LE_ENCODING", YAML_UTF16LE_ENCODING, 0);
+  add_integer_constant ("UTF16BE_ENCODING", YAML_UTF16BE_ENCODING, 0);
+
+  /* yaml_break_e */
+  add_integer_constant ("ANY_BREAK", YAML_ANY_BREAK, 0);
+  add_integer_constant ("CR_BREAK", YAML_CR_BREAK, 0);
+  add_integer_constant ("LN_BREAK", YAML_LN_BREAK, 0);
+  add_integer_constant ("CRLN_BREAK", YAML_CRLN_BREAK, 0);
+
+  /* yaml_error_type_e */
+  add_integer_constant ("NO_ERROR", YAML_NO_ERROR, 0);
+  add_integer_constant ("MEMORY_ERROR", YAML_MEMORY_ERROR, 0);
+  add_integer_constant ("READER_ERROR", YAML_READER_ERROR, 0);
+  add_integer_constant ("SCANNER_ERROR", YAML_SCANNER_ERROR, 0);
+  add_integer_constant ("PARSER_ERROR", YAML_PARSER_ERROR, 0);
+  add_integer_constant ("COMPOSER_ERROR", YAML_COMPOSER_ERROR, 0);
+  add_integer_constant ("WRITER_ERROR", YAML_WRITER_ERROR, 0);
+  add_integer_constant ("EMITTER_ERROR", YAML_EMITTER_ERROR, 0);
+
+  /* yaml_scalar_style_e */
+  add_integer_constant ("ANY_SCALAR_STYLE", YAML_ANY_SCALAR_STYLE, 0);
+  add_integer_constant ("PLAIN_SCALAR_STYLE", YAML_PLAIN_SCALAR_STYLE, 0);
+  add_integer_constant ("SINGLE_QUOTED_SCALAR_STYLE",
+                        YAML_SINGLE_QUOTED_SCALAR_STYLE, 0);
+  add_integer_constant ("DOUBLE_QUOTED_SCALAR_STYLE",
+                        YAML_DOUBLE_QUOTED_SCALAR_STYLE, 0);
+  add_integer_constant ("LITERAL_SCALAR_STYLE", YAML_LITERAL_SCALAR_STYLE, 0);
+  add_integer_constant ("FOLDED_SCALAR_STYLE", YAML_FOLDED_SCALAR_STYLE, 0);
+
+  /* yaml_sequence_style_e */
+  add_integer_constant ("ANY_SEQUENCE_STYLE", YAML_ANY_SEQUENCE_STYLE, 0);
+  add_integer_constant ("BLOCK_SEQUENCE_STYLE", YAML_BLOCK_SEQUENCE_STYLE, 0);
+  add_integer_constant ("FLOW_SEQUENCE_STYLE", YAML_FLOW_SEQUENCE_STYLE, 0);
+
+  /* yaml_mapping_style_e */
+  add_integer_constant ("ANY_MAPPING_STYLE", YAML_ANY_MAPPING_STYLE, 0);
+  add_integer_constant ("BLOCK_MAPPING_STYLE", YAML_BLOCK_MAPPING_STYLE, 0);
+  add_integer_constant ("FLOW_MAPPING_STYLE", YAML_FLOW_MAPPING_STYLE, 0);
+
+  /* yaml_token_type_e */
+  add_integer_constant ("NO_TOKEN", YAML_NO_TOKEN, 0);
+  add_integer_constant ("STREAM_START_TOKEN", YAML_STREAM_START_TOKEN, 0);
+  add_integer_constant ("STREAM_END_TOKEN", YAML_STREAM_END_TOKEN, 0);
+  add_integer_constant ("VERSION_DIRECTIVE_TOKEN",
+                        YAML_VERSION_DIRECTIVE_TOKEN, 0);
+  add_integer_constant ("TAG_DIRECTIVE_TOKEN", YAML_TAG_DIRECTIVE_TOKEN, 0);
+  add_integer_constant ("DOCUMENT_START_TOKEN", YAML_DOCUMENT_START_TOKEN, 0);
+  add_integer_constant ("DOCUMENT_END_TOKEN", YAML_DOCUMENT_END_TOKEN, 0);
+  add_integer_constant ("BLOCK_SEQUENCE_START_TOKEN",
+                        YAML_BLOCK_SEQUENCE_START_TOKEN, 0);
+  add_integer_constant ("BLOCK_MAPPING_START_TOKEN",
+                        YAML_BLOCK_MAPPING_START_TOKEN, 0);
+  add_integer_constant ("BLOCK_END_TOKEN", YAML_BLOCK_END_TOKEN, 0);
+  add_integer_constant ("FLOW_SEQUENCE_START_TOKEN",
+                        YAML_FLOW_SEQUENCE_START_TOKEN, 0);
+  add_integer_constant ("FLOW_SEQUENCE_END_TOKEN",
+                        YAML_FLOW_SEQUENCE_END_TOKEN, 0);
+  add_integer_constant ("FLOW_MAPPING_START_TOKEN",
+                        YAML_FLOW_MAPPING_START_TOKEN, 0);
+  add_integer_constant ("FLOW_MAPPING_END_TOKEN",
+                        YAML_FLOW_MAPPING_END_TOKEN, 0);
+  add_integer_constant ("BLOCK_ENTRY_TOKEN", YAML_BLOCK_ENTRY_TOKEN, 0);
+  add_integer_constant ("FLOW_ENTRY_TOKEN", YAML_FLOW_ENTRY_TOKEN, 0);
+  add_integer_constant ("KEY_TOKEN", YAML_KEY_TOKEN, 0);
+  add_integer_constant ("VALUE_TOKEN", YAML_VALUE_TOKEN, 0);
+  add_integer_constant ("ALIAS_TOKEN", YAML_ALIAS_TOKEN, 0);
+  add_integer_constant ("ANCHOR_TOKEN", YAML_ANCHOR_TOKEN, 0);
+  add_integer_constant ("TAG_TOKEN", YAML_TAG_TOKEN, 0);
+  add_integer_constant ("SCALAR_TOKEN", YAML_SCALAR_TOKEN, 0);
+
+  /* yaml_event_type_e */
+  add_integer_constant ("NO_EVENT", YAML_NO_EVENT, 0);
+  add_integer_constant ("STREAM_START_EVENT", YAML_STREAM_START_EVENT, 0);
+  add_integer_constant ("STREAM_END_EVENT", YAML_STREAM_END_EVENT, 0);
+  add_integer_constant ("DOCUMENT_START_EVENT", YAML_DOCUMENT_START_EVENT, 0);
+  add_integer_constant ("DOCUMENT_END_EVENT", YAML_DOCUMENT_END_EVENT, 0);
+  add_integer_constant ("ALIAS_EVENT", YAML_ALIAS_EVENT, 0);
+  add_integer_constant ("SCALAR_EVENT", YAML_SCALAR_EVENT, 0);
+  add_integer_constant ("SEQUENCE_START_EVENT", YAML_SEQUENCE_START_EVENT, 0);
+  add_integer_constant ("SEQUENCE_END_EVENT", YAML_SEQUENCE_END_EVENT, 0);
+  add_integer_constant ("MAPPING_START_EVENT", YAML_MAPPING_START_EVENT, 0);
+  add_integer_constant ("MAPPING_END_EVENT", YAML_MAPPING_END_EVENT, 0);
+
+  /* yaml_node_type_e */
+  add_integer_constant ("NO_NODE", YAML_NO_NODE, 0);
+  add_integer_constant ("SCALAR_NODE", YAML_SCALAR_NODE, 0);
+  add_integer_constant ("SEQUENCE_NODE", YAML_SEQUENCE_NODE, 0);
+  add_integer_constant ("MAPPING_NODE", YAML_MAPPING_NODE, 0);
+
+  /* yaml_parser_state_e */
+  add_integer_constant ("PARSE_STREAM_START_STATE",
+                        YAML_PARSE_STREAM_START_STATE, 0);
+  add_integer_constant ("PARSE_IMPLICIT_DOCUMENT_START_STATE",
+                        YAML_PARSE_IMPLICIT_DOCUMENT_START_STATE, 0);
+  add_integer_constant ("PARSE_DOCUMENT_START_STATE",
+                        YAML_PARSE_DOCUMENT_START_STATE, 0);
+  add_integer_constant ("PARSE_DOCUMENT_CONTENT_STATE",
+                        YAML_PARSE_DOCUMENT_CONTENT_STATE, 0);
+  add_integer_constant ("PARSE_DOCUMENT_END_STATE",
+                        YAML_PARSE_DOCUMENT_END_STATE, 0);
+  add_integer_constant ("PARSE_BLOCK_NODE_STATE",
+                        YAML_PARSE_BLOCK_NODE_STATE, 0);
+  add_integer_constant ("PARSE_BLOCK_NODE_OR_INDENTLESS_SEQUENCE_STATE",
+                        YAML_PARSE_BLOCK_NODE_OR_INDENTLESS_SEQUENCE_STATE, 0);
+  add_integer_constant ("PARSE_FLOW_NODE_STATE",
+                        YAML_PARSE_FLOW_NODE_STATE, 0);
+  add_integer_constant ("PARSE_BLOCK_SEQUENCE_FIRST_ENTRY_STATE",
+                        YAML_PARSE_BLOCK_SEQUENCE_FIRST_ENTRY_STATE, 0);
+  add_integer_constant ("PARSE_BLOCK_SEQUENCE_ENTRY_STATE",
+                        YAML_PARSE_BLOCK_SEQUENCE_ENTRY_STATE, 0);
+  add_integer_constant ("PARSE_INDENTLESS_SEQUENCE_ENTRY_STATE",
+                        YAML_PARSE_INDENTLESS_SEQUENCE_ENTRY_STATE, 0);
+  add_integer_constant ("PARSE_BLOCK_MAPPING_FIRST_KEY_STATE",
+                        YAML_PARSE_BLOCK_MAPPING_FIRST_KEY_STATE, 0);
+  add_integer_constant ("PARSE_BLOCK_MAPPING_KEY_STATE",
+                        YAML_PARSE_BLOCK_MAPPING_KEY_STATE, 0);
+  add_integer_constant ("PARSE_BLOCK_MAPPING_VALUE_STATE",
+                        YAML_PARSE_BLOCK_MAPPING_VALUE_STATE, 0);
+  add_integer_constant ("PARSE_FLOW_SEQUENCE_FIRST_ENTRY_STATE",
+                        YAML_PARSE_FLOW_SEQUENCE_FIRST_ENTRY_STATE, 0);
+  add_integer_constant ("PARSE_FLOW_SEQUENCE_ENTRY_STATE",
+                        YAML_PARSE_FLOW_SEQUENCE_ENTRY_STATE, 0);
+  add_integer_constant ("PARSE_FLOW_SEQUENCE_ENTRY_MAPPING_KEY_STATE",
+                        YAML_PARSE_FLOW_SEQUENCE_ENTRY_MAPPING_KEY_STATE, 0);
+  add_integer_constant ("PARSE_FLOW_SEQUENCE_ENTRY_MAPPING_VALUE_STATE",
+                        YAML_PARSE_FLOW_SEQUENCE_ENTRY_MAPPING_VALUE_STATE, 0);
+  add_integer_constant ("PARSE_FLOW_SEQUENCE_ENTRY_MAPPING_END_STATE",
+                        YAML_PARSE_FLOW_SEQUENCE_ENTRY_MAPPING_END_STATE, 0);
+  add_integer_constant ("PARSE_FLOW_MAPPING_FIRST_KEY_STATE",
+                        YAML_PARSE_FLOW_MAPPING_FIRST_KEY_STATE, 0);
+  add_integer_constant ("PARSE_FLOW_MAPPING_KEY_STATE",
+                        YAML_PARSE_FLOW_MAPPING_KEY_STATE, 0);
+  add_integer_constant ("PARSE_FLOW_MAPPING_VALUE_STATE",
+                        YAML_PARSE_FLOW_MAPPING_VALUE_STATE, 0);
+  add_integer_constant ("PARSE_FLOW_MAPPING_EMPTY_VALUE_STATE",
+                        YAML_PARSE_FLOW_MAPPING_EMPTY_VALUE_STATE, 0);
+  add_integer_constant ("PARSE_END_STATE", YAML_PARSE_END_STATE, 0);
+
+  /* yaml_emitter_state_e */
+  add_integer_constant ("EMIT_STREAM_START_STATE",
+                        YAML_EMIT_STREAM_START_STATE, 0);
+  add_integer_constant ("EMIT_FIRST_DOCUMENT_START_STATE",
+                        YAML_EMIT_FIRST_DOCUMENT_START_STATE, 0);
+  add_integer_constant ("EMIT_DOCUMENT_START_STATE",
+                        YAML_EMIT_DOCUMENT_START_STATE, 0);
+  add_integer_constant ("EMIT_DOCUMENT_CONTENT_STATE",
+                        YAML_EMIT_DOCUMENT_CONTENT_STATE, 0);
+  add_integer_constant ("EMIT_DOCUMENT_END_STATE",
+                        YAML_EMIT_DOCUMENT_END_STATE, 0);
+  add_integer_constant ("EMIT_FLOW_SEQUENCE_FIRST_ITEM_STATE",
+                        YAML_EMIT_FLOW_SEQUENCE_FIRST_ITEM_STATE, 0);
+  add_integer_constant ("EMIT_FLOW_SEQUENCE_ITEM_STATE",
+                        YAML_EMIT_FLOW_SEQUENCE_ITEM_STATE, 0);
+  add_integer_constant ("EMIT_FLOW_MAPPING_FIRST_KEY_STATE",
+                        YAML_EMIT_FLOW_MAPPING_FIRST_KEY_STATE, 0);
+  add_integer_constant ("EMIT_FLOW_MAPPING_KEY_STATE",
+                        YAML_EMIT_FLOW_MAPPING_KEY_STATE, 0);
+  add_integer_constant ("EMIT_FLOW_MAPPING_SIMPLE_VALUE_STATE",
+                        YAML_EMIT_FLOW_MAPPING_SIMPLE_VALUE_STATE, 0);
+  add_integer_constant ("EMIT_FLOW_MAPPING_VALUE_STATE",
+                        YAML_EMIT_FLOW_MAPPING_VALUE_STATE, 0);
+  add_integer_constant ("EMIT_BLOCK_SEQUENCE_FIRST_ITEM_STATE",
+                        YAML_EMIT_BLOCK_SEQUENCE_FIRST_ITEM_STATE, 0);
+  add_integer_constant ("EMIT_BLOCK_SEQUENCE_ITEM_STATE",
+                        YAML_EMIT_BLOCK_SEQUENCE_ITEM_STATE, 0);
+  add_integer_constant ("EMIT_BLOCK_MAPPING_FIRST_KEY_STATE",
+                        YAML_EMIT_BLOCK_MAPPING_FIRST_KEY_STATE, 0);
+  add_integer_constant ("EMIT_BLOCK_MAPPING_KEY_STATE",
+                        YAML_EMIT_BLOCK_MAPPING_KEY_STATE, 0);
+  add_integer_constant ("EMIT_BLOCK_MAPPING_SIMPLE_VALUE_STATE",
+                        YAML_EMIT_BLOCK_MAPPING_SIMPLE_VALUE_STATE, 0);
+  add_integer_constant ("EMIT_BLOCK_MAPPING_VALUE_STATE",
+                        YAML_EMIT_BLOCK_MAPPING_VALUE_STATE, 0);
+  add_integer_constant ("EMIT_END_STATE", YAML_EMIT_END_STATE, 0);
+
+	INIT
+}
+
+PIKE_MODULE_EXIT
+{
+	EXIT
+}
+
+/*! @endmodule
+ */
+/*! @endmodule
+ */
+/*! @endmodule
+ */

@@ -1,0 +1,90 @@
+#!/usr/bin/env pike
+#include "yaml_config.h"
+
+int main()
+{
+  write("*** Compiling sources and doc\n\n");
+
+  if (Process.system("pike -x module && pike -x module module_modref") != 0) {
+    werror("- Failed to compile stuff. Aborting!\n");
+    return 1;
+  }
+
+  array(string) includes = ({
+    "Yaml.cmod",
+    "yaml_config.h.in",
+    "configure.in",
+    "Makefile.in",
+    "test",
+    "module.pmod.in",
+    "refdoc",
+    "README",
+    "INSTALL",
+    "COPYING",
+    "Changelog"
+  });
+
+  string tarname = PACKAGE_TARNAME + "-" + PACKAGE_VERSION;
+  mapping outputs = ([
+    "tar cfz ../%s %s" : tarname + ".tar.gz",
+    "tar cfj ../%s %s" : tarname + ".tar.bz2",
+    "zip -rq ../%s %s" : tarname + ".zip"
+  ]);
+
+  string dest = "__tmp/" + tarname;
+
+  if (Stdio.exist(dest)) {
+    Process.system("rm -Rf " + dest + "/*");
+  }
+
+  array(string) cmods = ({});
+  string old_path = getcwd();
+
+  Stdio.mkdirhier(dest);
+
+  write("*** Copying files...\n\n");
+
+  foreach (includes, string inc) {
+    if (Stdio.exist(inc)) {
+      write("+ %s > %s/%[0]s", inc, dest);
+      if (Stdio.cp(inc, dest + "/" + inc)) {
+      	write("...OK!\n");
+      	if (has_suffix(inc, ".cmod"))
+      	  cmods += ({ inc });
+      }
+      else
+      	write("...FAILED!\n");
+    }
+    else {
+      write("- %s doesn't exists...skipping\n", inc);
+    }
+  }
+  
+#if constant(Syntaxer)
+  string prog = "/home/pontus/Pike-Modules/Syntaxer.pmod/codify " 
+                " -t 2 -l cmod -o __tmp/%s/refdoc %s";
+  
+  foreach (cmods, string cmod) {
+    Process.system(sprintf(prog, tarname, cmod));
+  }
+#endif
+  write("\n*** Building archives\n\n");
+
+  cd("__tmp");
+
+  foreach (outputs; string type; string pack) {
+    string cmd = sprintf(type, pack, tarname);
+    write("+ building %s...", pack);
+    if (Process.system(cmd) == 0)
+      write("OK!\n");
+    else
+      write("FAILED!\n");
+  }
+
+  write("\n*** Cleaning up\n\n");
+
+  cd(old_path);
+  Process.system("rm -Rf __tmp");
+
+  write("*** All done!\n");
+}
