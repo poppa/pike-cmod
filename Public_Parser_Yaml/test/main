@@ -19,11 +19,14 @@ int main(int argc, array(string) argv)
 
   Parser p = Parser ();
 
-  string file = combine_path(dirname(__FILE__), "public.yaml");
+  string file = combine_path(dirname(__FILE__), "example.yaml");
 
 
-  mapping data = p->get_mapping (file);
-  werror ("%O\n", data);
+  p->get_sections (file, lambda (mixed data) {
+    werror ("Data\n");
+  });
+
+  //werror ("%O\n", data);
 
 /*
   p->set_input_file (combine_path(dirname(__FILE__), "public.yaml"));

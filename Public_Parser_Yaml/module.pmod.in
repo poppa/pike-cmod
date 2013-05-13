@@ -25,11 +25,134 @@ inherit Public.Parser@module@;
 constant __components = ({});
 //! @endignore
 
+typedef mapping(string:int|mapping(string:int|string)|string) EventData;
+
 class Parser
 {
   inherit _Parser;
 
+  private EventData next_event;
+  private int next_event_type;
+
+  int parse ()
+  {
+    if (next_event_type) {
+      int t = next_event_type;
+      next_event_type = 0;
+      return t;
+    }
+
+    // No one bothered using it
+    if (next_event)
+      next_event = 0;
+
+    return ::parse ();
+  }
+
+  EventData get_event ()
+  {
+    if (next_event) {
+      EventData t = copy_value(next_event);
+      next_event = 0;
+      return t;
+    }
+
+    return ::get_event ();
+  }
+
+  EventData peek_event ()
+  {
+    next_event_type = ::parse ();
+    return next_event = ::get_event ();
+  }
+
   private constant STATE_KEY = 0;
+
+  private int depth = 0;
+
+#define INDENT() write ("%s", "  " * (depth++));
+#define UNINDENT() write ("%s", "  " * (--depth));
+
+  mixed get_sections (string file_or_data, function callback)
+  {
+    if (Stdio.exist (file_or_data))
+      set_input_file (file_or_data);
+
+    int type;
+
+    while ((type = parse ())) {
+      switch (type)
+      {
+        case STREAM_START_EVENT:
+          INDENT ();
+          write ("Stream Start\n");
+          break;
+
+        case STREAM_END_EVENT:
+          UNINDENT ();
+          write ("Stream End\n");
+          break;
+
+        case DOCUMENT_START_EVENT:
+          INDENT ();
+          write ("Document Start\n");
+          break;
+
+        case DOCUMENT_END_EVENT:
+          UNINDENT ();
+          write ("Document End\n");
+          break;
+
+        case SEQUENCE_START_EVENT:
+          INDENT ();
+          write ("Sequence Start\n");
+/*
+          EventData sd = get_event ();
+          if (sd->sequence_start->tag || sd->sequence_start->anchor)
+            werror ("Got sequence data: %O\n", sd->sequence_start);
+*/
+
+          break;
+
+        case SEQUENCE_END_EVENT:
+          UNINDENT ();
+          write ("Sequence End\n");
+          break;
+
+        case MAPPING_START_EVENT:
+          INDENT ();
+          write ("Mapping Start\n");
+/*
+          EventData md = get_event ();
+          if (md->mapping_start->tag || md->mapping_start->anchor)
+            werror ("Got mapping start data: %O\n", md->mapping_start);
+*/
+          break;
+
+        case MAPPING_END_EVENT:
+          UNINDENT ();
+          write ("Mapping End\n");
+          break;
+
+        case SCALAR_EVENT:
+          INDENT ();
+          EventData data = get_event ();
+
+          /*
+          write ("Scalar: %5s %s\n",
+                 "(" + data->scalar->length + ")", data->scalar->value);
+          */
+
+          write ("Scalar: %O\n", data->scalar->value);
+
+          if (peek_event ()->type == SEQUENCE_START_EVENT)
+            write ("[Next event is SEQUENCE_START_EVENT]\n");
+
+          depth--;
+          break;
+      }
+    }
+  }
 
   //! Parse @[file_or_data] into a mapping
   //!
@@ -91,8 +214,10 @@ class Parser
 
           if (data_state == STATE_KEY)
             last_key = value->scalar->value;
-          else
+          else if (tmp_map)
             tmp_map[last_key] = value->scalar->value;
+          else
+            werror ("No tmp_map set: %O\n", value->scalar);
 
           data_state = !data_state;
 
