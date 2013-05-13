@@ -89,14 +89,9 @@ PIKEFUN mapping(string:int) get_version ()
   int a, b, c;
   yaml_get_version (&a, &b, &c);
 
-#define PUSH_MAP(K,V) { push_text ((K)); \
-                        push_int ((V)); }
-
-  PUSH_MAP ("major", a);
-  PUSH_MAP ("minor", b);
-  PUSH_MAP ("patch", c);
-
-#undef PUSH_MAP
+  push_constant_text ("major"); push_int (a);
+  push_constant_text ("minor"); push_int (b);
+  push_constant_text ("patch"); push_int (c);
 
   f_aggregate_mapping (6);
 
@@ -305,6 +300,8 @@ PIKECLASS _Parser
         f_aggregate_mapping (6);
     }
 
+    yaml_event_delete (&THIS->event);
+
     return;
   }
 
@@ -320,6 +317,8 @@ PIKECLASS _Parser
         push_int (THIS->token.type);
         break;
     }
+
+    yaml_token_delete (&THIS->token);
   }
 
   INIT
@@ -340,9 +339,6 @@ PIKECLASS _Parser
 
   EXIT
   {
-    yaml_event_delete (&THIS->event);
-    yaml_token_delete (&THIS->token);
-
     if (THIS->fh != NULL) {
       YAML_TRACE ("Closing file\n");
       fclose (THIS->fh);
