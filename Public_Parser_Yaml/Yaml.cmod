@@ -185,6 +185,8 @@ PIKECLASS _Parser
   {
     yaml_event_t _event;
 
+    yaml_event_delete (&THIS->event);
+
     if (!THIS->has_input) {
       Pike_error ("No input given to object. Set via \"set_input_file()\" "
                   "or \"set_input_string()\"\n");
@@ -217,39 +219,49 @@ PIKECLASS _Parser
     RETURN (_token.type);
   }
 
+#define EVENT THIS->event
 #define DATA THIS->event.data
+
+  PIKEFUN mapping(string:int) get_end_mark ()
+  {
+    if (EVENT.type) {
+      push_constant_text ("index");  push_int (EVENT.end_mark.index);
+      push_constant_text ("line");   push_int (EVENT.end_mark.line);
+      push_constant_text ("column"); push_int (EVENT.end_mark.column);
+
+      f_aggregate_mapping (6);
+      return;
+    }
+
+    push_int (0);
+  }
+
+  PIKEFUN mapping(string:int) get_start_mark ()
+  {
+    if (EVENT.type) {
+      push_constant_text ("index");  push_int (EVENT.start_mark.index);
+      push_constant_text ("line");   push_int (EVENT.start_mark.line);
+      push_constant_text ("column"); push_int (EVENT.start_mark.column);
+
+      f_aggregate_mapping (6);
+      return;
+    }
+
+    push_int (0);
+  }
 
   PIKEFUN mapping(string:int|mapping(string:int|string)|string) get_event ()
   {
-    push_constant_text ("type");   push_int (THIS->event.type);
+    push_constant_text ("type"); push_int (EVENT.type);
 
-    push_constant_text ("end_mark");
-    push_constant_text ("index");  push_int (THIS->event.end_mark.index);
-    push_constant_text ("line");   push_int (THIS->event.end_mark.line);
-    push_constant_text ("column"); push_int (THIS->event.end_mark.column);
-    f_aggregate_mapping (6);
-
-    push_constant_text ("start_mark");
-    push_constant_text ("index");  push_int (THIS->event.start_mark.index);
-    push_constant_text ("line");   push_int (THIS->event.start_mark.line);
-    push_constant_text ("column"); push_int (THIS->event.start_mark.column);
-    f_aggregate_mapping (6);
-
-    switch (THIS->event.type)
+    switch (EVENT.type)
     {
       case  YAML_STREAM_START_EVENT:
-        push_constant_text ("stream_start");
-        push_constant_text ("encoding");
-          push_int (THIS->event.data.stream_start.encoding);
-
-        f_aggregate_mapping (2);
-        f_aggregate_mapping (8);
+        push_constant_text ("encoding"); push_int (DATA.stream_start.encoding);
+        f_aggregate_mapping (4);
         break;
 
       case YAML_DOCUMENT_START_EVENT:
-        push_constant_text ("document_start");
-
-        // Sub key of document_start
         push_constant_text ("tag_directives");
         push_constant_text ("start");
           P_TEXT ((const char *) DATA.document_start.tag_directives.start);
@@ -258,17 +270,13 @@ PIKECLASS _Parser
 
         f_aggregate_mapping (4);
 
-        // Sub item of document_start
         push_constant_text ("implicit");
           push_int (DATA.document_start.implicit);
 
-        f_aggregate_mapping (4); // tag_directives and implicit
-        f_aggregate_mapping (8);
-
+        f_aggregate_mapping (6);
         break;
 
       case YAML_SCALAR_EVENT:
-        push_constant_text ("scalar");
         push_constant_text ("tag"); P_TEXT ((const char *) DATA.scalar.tag);
         push_constant_text ("anchor");
           P_TEXT ((const char *) DATA.scalar.anchor);
@@ -281,13 +289,10 @@ PIKECLASS _Parser
         push_constant_text ("style");
           push_int (DATA.scalar.style);
 
-        f_aggregate_mapping (14);
-        f_aggregate_mapping (8);
-
+        f_aggregate_mapping (16);
         break;
 
       case YAML_SEQUENCE_START_EVENT:
-        push_constant_text ("sequence_start");
         push_constant_text ("anchor");
           P_TEXT ((const char *) DATA.sequence_start.anchor);
         push_constant_text ("tag");
@@ -296,13 +301,10 @@ PIKECLASS _Parser
           push_int (DATA.sequence_start.implicit);
         push_constant_text ("style"); push_int (DATA.sequence_start.style);
 
-        f_aggregate_mapping (8);
-        f_aggregate_mapping (8);
-
+        f_aggregate_mapping (10);
         break;
 
       case YAML_MAPPING_START_EVENT:
-        push_constant_text ("mapping_start");
         push_constant_text ("anchor");
           P_TEXT ((const char *) DATA.sequence_start.anchor);
         push_constant_text ("tag");
@@ -311,34 +313,24 @@ PIKECLASS _Parser
           push_int (DATA.sequence_start.implicit);
         push_constant_text ("style"); push_int (DATA.sequence_start.style);
 
-        f_aggregate_mapping (8);
-        f_aggregate_mapping (8);
-
+        f_aggregate_mapping (10);
         break;
 
       case YAML_DOCUMENT_END_EVENT:
-        push_constant_text ("document_end");
         push_constant_text ("implicit"); push_int (DATA.document_end.implicit);
-
-        f_aggregate_mapping (2);
-        f_aggregate_mapping (8);
-
+        f_aggregate_mapping (4);
         break;
 
       case YAML_ALIAS_EVENT:
-        push_constant_text ("alias");
         push_constant_text ("anchor");
           P_TEXT ((const char *) DATA.alias.anchor);
 
-        f_aggregate_mapping (2);
-        f_aggregate_mapping (8);
+        f_aggregate_mapping (4);
         break;
 
       default:
-        f_aggregate_mapping (6);
+        f_aggregate_mapping (2);
     }
-
-    yaml_event_delete (&THIS->event);
 
     return;
   }
@@ -378,6 +370,8 @@ PIKECLASS _Parser
 
   EXIT
   {
+    yaml_event_delete (&THIS->event);
+
     if (THIS->fh != NULL) {
       YAML_TRACE ("Closing file\n");
       fclose (THIS->fh);

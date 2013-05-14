@@ -76,13 +76,11 @@ class TestParser
         case SCALAR_EVENT:
           INDENT ();
           EventData data = get_event ();
-
-          /*
+/*
           write ("Scalar: %5s %s\n",
                  "(" + data->scalar->length + ")", data->scalar->value);
-          */
-
-          write ("Scalar: %O\n", data->scalar->value);
+*/
+          write ("Scalar: %O\n", data->value);
 
           if (::peek_event ()->type == SEQUENCE_START_EVENT)
             write ("[Next event is SEQUENCE_START_EVENT]\n");
@@ -109,32 +107,37 @@ int main(int argc, array(string) argv)
   write ("%O\n", version);
 #endif
 
+  EventData data;
+
   TestParser p = TestParser ();
   p->set_encoding (UTF8_ENCODING);
 
   string file = combine_path(dirname(__FILE__), "example.yaml");
   //p->set_input_string (Stdio.read_file (file));
 
+#if 1
   p->test (file, lambda (mixed data) {
     werror ("Data\n");
   });
 
   //werror ("%O\n", data);
+#else
 
-/*
-  p->set_input_file (combine_path(dirname(__FILE__), "public.yaml"));
-*/
-/*
+  p->set_input_file (file);
+
+
   int type;
 
   while (type = p->parse ()) {
     //werror ("TYPE0: %O\n", type);
     mixed x = p->get_event ();
 
-    if (type == ALIAS_EVENT)
+    if (type == DOCUMENT_START_EVENT) {
       werror ("%O\n", x);
+    }
   }
-*/
+
+#endif
   //mapping (string:int) version = get_version ();
   //write ("%O\n", version);
 }
