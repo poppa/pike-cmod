@@ -98,6 +98,10 @@ PIKEFUN mapping(string:int) get_version ()
   return;
 }
 
+#define PARSER_ERROR(P) \
+  Pike_error("Parser error (%d): %s at offset %d in ", \
+             P.error, P.problem, P.problem_offset)
+
 PIKECLASS _Parser
 {
   CVAR yaml_parser_t parser;
@@ -105,6 +109,7 @@ PIKECLASS _Parser
   CVAR yaml_token_t token;
   CVAR FILE *fh;
   CVAR int has_input;
+  CVAR char *input_str;
 
   /*! @decl void create()
    *!
@@ -116,6 +121,38 @@ PIKECLASS _Parser
     YAML_TRACE ("Create parser object\n");
   }
 
+  /*! decl set_encoding(int encoding)
+   *!
+   *! Encoding can be any of of the constants @[ANY_ENCODING], @[UTF8_ENCODING],
+   *! @[UTF16LE_ENCODING] or @[UTF16BE_ENCODING]
+   */
+  PIKEFUN void set_encoding (int encoding)
+  {
+    yaml_parser_set_encoding (&THIS->parser, encoding);
+    pop_n_elems (args);
+  }
+
+  /*! decl set_input_file(string input)
+   *!
+   *! @param input
+   *!  The YAML string to parse/scan
+   */
+  PIKEFUN void set_input_string (string input)
+  {
+    int len;
+    len = strlen (input->str);
+    THIS->input_str = strdup (input->str);
+
+    if (THIS->input_str == NULL)
+      Pike_error ("YAML: Out of memory!\n");
+
+    yaml_parser_set_input_string (&THIS->parser,
+                                  (const unsigned char *) THIS->input_str,
+                                  len);
+    THIS->has_input = 1;
+    pop_n_elems (args);
+  }
+
   /*! @decl void set_input_file (string file)
    *!
    *! @param file
@@ -123,7 +160,6 @@ PIKECLASS _Parser
    */
   PIKEFUN void set_input_file (string file)
   {
-    //yaml_parser_t _parser;
     THIS->fh = fopen (file->str, "r");
 
     if (THIS->fh == NULL) {
@@ -149,11 +185,13 @@ PIKECLASS _Parser
   {
     yaml_event_t _event;
 
-    if (!THIS->has_input)
-      Pike_error ("No input given to object. Set via \"set_input_file()\"\n");
+    if (!THIS->has_input) {
+      Pike_error ("No input given to object. Set via \"set_input_file()\" "
+                  "or \"set_input_string()\"\n");
+    }
 
     if (!yaml_parser_parse (&THIS->parser, &_event)) {
-      Pike_error ("Parser error: %d\n", THIS->parser.error);
+      PARSER_ERROR (THIS->parser);
       return;
     }
 
@@ -326,6 +364,7 @@ PIKECLASS _Parser
     YAML_TRACE ("Init class\n");
     THIS->has_input = 0;
     THIS->fh = NULL;
+    THIS->input_str = NULL;
 
     memset (&THIS->parser, 0, sizeof (THIS->parser));
     memset (&THIS->event,  0, sizeof (THIS->event));
@@ -343,6 +382,9 @@ PIKECLASS _Parser
       YAML_TRACE ("Closing file\n");
       fclose (THIS->fh);
     }
+
+    if (THIS->input_str != NULL)
+      free (THIS->input_str);
 
     YAML_TRACE ("Deleteing parser\n");
     yaml_parser_delete (&THIS->parser);
@@ -533,6 +575,31 @@ PIKE_MODULE_INIT
   add_integer_constant ("EMIT_BLOCK_MAPPING_VALUE_STATE",
                         YAML_EMIT_BLOCK_MAPPING_VALUE_STATE, 0);
   add_integer_constant ("EMIT_END_STATE", YAML_EMIT_END_STATE, 0);
+
+  /* TAGS */
+
+  /** The tag @c !!null with the only possible value: @c null. */
+  add_string_constant ("NULL_TAG", YAML_NULL_TAG, 0);
+  /** The tag @c !!bool with the values: @c true and @c falce. */
+  add_string_constant ("BOOL_TAG", YAML_BOOL_TAG, 0);
+  /** The tag @c !!str for string values. */
+  add_string_constant ("STR_TAG", YAML_STR_TAG, 0);
+  /** The tag @c !!int for integer values. */
+  add_string_constant ("INT_TAG", YAML_INT_TAG, 0);
+  /** The tag @c !!float for float values. */
+  add_string_constant ("FLOAT_TAG", YAML_FLOAT_TAG, 0);
+  /** The tag @c !!timestamp for date and time values. */
+  add_string_constant ("TIMESTAMP_TAG", YAML_TIMESTAMP_TAG, 0);
+  /** The tag @c !!seq is used to denote sequences. */
+  add_string_constant ("SEQ_TAG", YAML_SEQ_TAG, 0);
+  /** The tag @c !!map is used to denote mapping. */
+  add_string_constant ("MAP_TAG", YAML_MAP_TAG, 0);
+  /** The default scalar tag is @c !!str. */
+  add_string_constant ("DEFAULT_SCALAR_TAG", YAML_DEFAULT_SCALAR_TAG, 0);
+  /** The default sequence tag is @c !!seq. */
+  add_string_constant ("DEFAULT_SEQUENCE_TAG", YAML_DEFAULT_SEQUENCE_TAG, 0);
+  /** The default mapping tag is @c !!map. */
+  add_string_constant ("DEFAULT_MAPPING_TAG", YAML_DEFAULT_MAPPING_TAG, 0);
 
   INIT
 }
