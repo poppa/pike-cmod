@@ -50,7 +50,7 @@ DECLARATIONS
 /*! @module Yaml
  */
 
-//#define YAML_DEBUG
+#define YAML_DEBUG
 
 #ifdef YAML_DEBUG
 # define YAML_TRACE(X...) printf ("# " X)
@@ -102,26 +102,15 @@ PIKEFUN mapping(string:int) get_version ()
   Pike_error("Parser error (%d): %s at offset %d in ", \
              P.error, P.problem, P.problem_offset)
 
-PIKECLASS _Parser
+PIKECLASS _Yaml_
+  flags ID_PROTECTED;
 {
   CVAR yaml_parser_t parser;
-  CVAR yaml_event_t event;
-  CVAR yaml_token_t token;
-  CVAR FILE *fh;
   CVAR int has_input;
   CVAR char *input_str;
+  CVAR FILE *fh;
 
-  /*! @decl void create()
-   *!
-   *! Creates a YAML parser object
-   */
-  PIKEFUN void create ()
-    flags ID_PROTECTED;
-  {
-    YAML_TRACE ("Create parser object\n");
-  }
-
-  /*! decl set_encoding(int encoding)
+  /*! @decl set_encoding(int encoding)
    *!
    *! Encoding can be any of of the constants @[ANY_ENCODING], @[UTF8_ENCODING],
    *! @[UTF16LE_ENCODING] or @[UTF16BE_ENCODING]
@@ -132,7 +121,7 @@ PIKECLASS _Parser
     pop_n_elems (args);
   }
 
-  /*! decl set_input_file(string input)
+  /*! @decl set_input_file(string input)
    *!
    *! @param input
    *!  The YAML string to parse/scan
@@ -174,6 +163,114 @@ PIKECLASS _Parser
     pop_n_elems (args);
   }
 
+  INIT 
+  {
+    YAML_TRACE ("Init class\n");
+    THIS->has_input = 0;
+    THIS->fh = NULL;
+    THIS->input_str = NULL;
+
+    memset (&THIS->parser, 0, sizeof (THIS->parser));
+
+    if (!yaml_parser_initialize (&THIS->parser)) {
+      Pike_error ("Error initializing parser!\n");
+      return;
+    }
+  }
+
+  EXIT
+  {
+    if (THIS->fh != NULL) {
+      YAML_TRACE ("Closing file\n");
+      fclose (THIS->fh);
+    }
+
+    if (THIS->input_str != NULL)
+      free (THIS->input_str);
+
+    yaml_parser_delete (&THIS->parser);
+
+    YAML_TRACE ("Exit class\n");
+  }
+}
+
+PIKECLASS _Parser
+{
+  //CVAR yaml_parser_t parser;
+  CVAR yaml_event_t event;
+  //CVAR FILE *fh;
+  //CVAR int has_input;
+  //CVAR char *input_str;
+
+  /*! @decl void create()
+   *!
+   *! Creates a YAML parser object
+   */
+  PIKEFUN void create ()
+    flags ID_PROTECTED;
+  {
+    YAML_TRACE ("Create parser object\n");
+  }
+
+  /*! decl set_encoding(int encoding)
+   *!
+   *! Encoding can be any of of the constants @[ANY_ENCODING], @[UTF8_ENCODING],
+   *! @[UTF16LE_ENCODING] or @[UTF16BE_ENCODING]
+   */
+  /*
+  PIKEFUN void set_encoding (int encoding)
+  {
+    yaml_parser_set_encoding (&THIS->parser, encoding);
+    pop_n_elems (args);
+  }
+  */
+
+  /*! decl set_input_file(string input)
+   *!
+   *! @param input
+   *!  The YAML string to parse/scan
+   */
+  /*
+  PIKEFUN void set_input_string (string input)
+  {
+    int len;
+    len = strlen (input->str);
+    THIS->input_str = strdup (input->str);
+
+    if (THIS->input_str == NULL)
+      Pike_error ("YAML: Out of memory!\n");
+
+    yaml_parser_set_input_string (&THIS->parser,
+                                  (const unsigned char *) THIS->input_str,
+                                  len);
+    THIS->has_input = 1;
+    pop_n_elems (args);
+  }
+  */
+
+  /*! @decl void set_input_file (string file)
+   *!
+   *! @param file
+   *!  The YAML file to parse/scan
+   */
+  /*
+  PIKEFUN void set_input_file (string file)
+  {
+    THIS->fh = fopen (file->str, "r");
+
+    if (THIS->fh == NULL) {
+      Pike_error ("Unable to open file \"%s\"\n", file->str);
+      return;
+    }
+
+    yaml_parser_set_input_file (&THIS->parser, THIS->fh);
+
+    THIS->has_input = 1;
+
+    pop_n_elems (args);
+  }
+  */
+
   /*! @decl int parse()
    *!
    *! Move parser to next event
@@ -200,23 +297,6 @@ PIKECLASS _Parser
     THIS->event = _event;
 
     RETURN (_event.type);
-  }
-
-  PIKEFUN int scan ()
-  {
-    yaml_token_t _token;
-
-    if (!THIS->has_input)
-      Pike_error ("No input given to object. Set via \"set_input_file()\"\n");
-
-    if (!yaml_parser_scan (&THIS->parser, &_token)) {
-      Pike_error ("Scanner error: %d\n", THIS->parser.error);
-      return;
-    }
-
-    THIS->token = _token;
-
-    RETURN (_token.type);
   }
 
 #define EVENT THIS->event
@@ -335,43 +415,31 @@ PIKECLASS _Parser
     return;
   }
 
-  PIKEFUN int|string get_token ()
-  {
-    switch (THIS->token.type)
-    {
-      case YAML_SCALAR_TOKEN:
-        push_text ((const char*) THIS->token.data.scalar.value);
-        break;
-
-      default:
-        push_int (THIS->token.type);
-        break;
-    }
-
-    yaml_token_delete (&THIS->token);
-  }
-
   INIT
   {
+    /*
     YAML_TRACE ("Init class\n");
     THIS->has_input = 0;
     THIS->fh = NULL;
     THIS->input_str = NULL;
+    */
 
-    memset (&THIS->parser, 0, sizeof (THIS->parser));
+    //memset (&THIS->parser, 0, sizeof (THIS->parser));
     memset (&THIS->event,  0, sizeof (THIS->event));
-    memset (&THIS->token,  0, sizeof (THIS->token));
+    //memset (&THIS->token,  0, sizeof (THIS->token));
 
+/*
     if (!yaml_parser_initialize (&THIS->parser)) {
       Pike_error ("Error initializing parser!\n");
       return;
     }
+*/
   }
 
   EXIT
   {
     yaml_event_delete (&THIS->event);
-
+/*
     if (THIS->fh != NULL) {
       YAML_TRACE ("Closing file\n");
       fclose (THIS->fh);
@@ -384,6 +452,41 @@ PIKECLASS _Parser
     yaml_parser_delete (&THIS->parser);
 
     YAML_TRACE ("Exit class\n");
+    */
+  }
+}
+
+PIKECLASS _Scanner
+{
+  INHERIT _Yaml_;
+
+  CVAR yaml_token_t token;
+
+  PIKEFUN int scan ()
+  {
+    yaml_token_t _token;
+
+    if (!THIS->has_input)
+      Pike_error ("No input given to object. Set via \"set_input_file()\"\n");
+
+    if (!yaml_parser_scan (&THIS->parser, &_token)) {
+      Pike_error ("Scanner error: %d\n", THIS->parser.error);
+      return;
+    }
+
+    THIS->token = _token;
+
+    RETURN (_token.type);
+  }
+ 
+  INIT 
+  {
+    memset (&THIS->token,  0, sizeof (THIS->token));
+  }
+
+  EXIT
+  {
+    yaml_token_delete (&THIS->token);
   }
 }
 
